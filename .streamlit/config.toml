@@ -1,0 +1,18 @@
+[theme]
+base = "dark"
+primaryColor = "#5B9BFF"
+backgroundColor = "#0C1636"
+secondaryBackgroundColor = "#15234C"
+textColor = "#EDF2FC"
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+magicEnabled = false
+
+[server]
+address = "localhost"   # yalnız bu bilgisayardan erişim (veri kişisel kullanım içindir)
+
+[client]
+toolbarMode = "viewer"   # "Deploy" düğmesini gizler

@@ -1,0 +1,8 @@
+isyatirimhisse==5.0.1
+pandas
+numpy
+streamlit>=1.45
+plotly>=5.20
+openpyxl
+# optional, only for tests/test_parity.py (needs the bist-retail-finance SQL Server database)
+pyodbc
