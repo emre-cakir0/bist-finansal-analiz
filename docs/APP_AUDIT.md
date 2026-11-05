@@ -13,7 +13,7 @@ Bu belge, uygulamayı tam bir mali tablo analiz aracına dönüştürme isteğin
 | Oran mantığı (`rf_core.py`) | **Yeniden düzenlendi** → `bistfa/metrics.py` | 43 metrik tek bir kayıtta tanımlandı: her sonuç değer, birim, formül, kullanılan kalemler, bakiye bazı ve hesaplanamadıysa nedenini taşır. Ortalama bakiye kuralı eklendi. |
 | Veri modeli | **Yeni**: `bistfa/model.py` | İstenen köken alanları için uzun formatlı fact tablosu (aşağıda). |
 | Arayüz (`app.py` v1, 5 sekme) | **Yeniden yazıldı**: `app/app.py`, `app/ui.py`, `app/views.py` | 8 sayfa, formül açıklama katmanı ve metrik yanında uyarı gereksinimleri tek sayfalı tasarıma sığmıyordu. |
-| v1 dosyaları | **Silinmedi**: `app/legacy_v1/` | Çalışan hesaplamalar silinmez kuralı. |
+| v1 dosyaları | Geliştirme klasöründe saklandı, bu depoya alınmadı | Çalışan hesaplamalar silinmez kuralı; v1 hesapları bistfa'ya taşındı. |
 
 Paket katmanları: `source` (ham veri) → `model` (fact tablosu, türetilmiş satırlar) → `quality` (testler, baz kırılması) → `metrics` (oran kaydı) → `company` (tek şirket görünümü, karşılaştırma yöntemi) → `statements`, `findings`, `risk`, `peers`, `report` (sunum için hazır çıktılar). Arayüz hesaplama yapmaz.
 
