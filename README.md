@@ -1,5 +1,9 @@
 # BIST Finansal Analiz: financial statement analysis app for Borsa Istanbul companies
 
+## Canlı uygulama
+[📊 BIST Finansal Analiz uygulamasını aç](https://tgorl3ydsrjfbzbzk7ymx7.streamlit.app/)
+
+
 Type a BIST ticker and get a full financial-statement analysis: the statements themselves, horizontal and vertical analysis, profitability and DuPont, cash flow and working capital, liquidity and leverage, peer comparison and a rule-based check-up report. Every number shows where it comes from, and every ratio shows how it was calculated. Built with Python and Streamlit; the interface is in Turkish.
 
 This is the follow-up to [bist-retail-finance](https://github.com/emre-cakir0/bist-retail-finance), a SQL Server and Power BI pipeline for four BIST retailers. The analysis rules developed there were moved into a Python package (`bistfa`) that works for any non-financial BIST company, and the app's results are tested against that pipeline (3,136 values, 0 differences).
