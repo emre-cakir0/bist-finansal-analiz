@@ -74,7 +74,7 @@ The full audit of decisions, rules and test results is in [docs/APP_AUDIT.md](do
 
 | Test | Command | Result |
 |---|---|---|
-| Unit tests | `python tests/test_core.py` | 11 / 11: safe % change, comparability codes in all three price views, price conversion against 10 published figures, non-applier detection, statement identities, DuPont = ROE, average-balance rule, reasons for uncomputable metrics, real vs transition TL changes, statements and equity reconciliation, Altman eligibility |
+| Unit tests | `python tests/test_core.py` | 13 / 13: safe % change, timeout retries and refusal of partial fetches, cache completeness marker, comparability codes in all three price views, price conversion against 10 published figures, non-applier detection, statement identities, DuPont = ROE, average-balance rule, reasons for uncomputable metrics, real vs transition TL changes, statements and equity reconciliation, Altman eligibility |
 | Parity with the SQL pipeline | `python tests/test_parity.py` | Run on the source-column view: 28 metrics × 4 companies × 28 periods, 3,136 values, 0 differences (last run before the price-level module was added; needs the `bist-retail-finance` database) |
 | UI smoke test | `python tests/test_app_pages.py` | 8 pages × 8 scenarios (annual, interim, negative equity, transition year, pre-TMS 29, mixed-basis interim, as-published view) run headless with 0 errors |
 | Source identities | in app | 20 total-equals-components identities checked every period on the source figures (e.g. BİM: 581 pass, 0 fail). Inconsistencies in the source are shown as failures, not hidden |

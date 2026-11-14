@@ -124,3 +124,15 @@ Kaynakta olmayan bilgiler açıkça belirtilir, uydurulmaz:
 - TÜFE tablosu Ekim 2026'ya kadar doludur. Daha yeni bir fiyat düzeyi gerektiren kolon kaynak fiyatıyla bırakılır ve dönem notu düşülür; tablo elle güncellenir.
 - Çeyrek makullüğü testi artık karşılaştırmaları kapatmaz; aralık dışı çeyrekler (ör. ASELSAN'ın dördüncü çeyrek mevsimselliği) "INFO" olarak listelenir.
 - SQL birebirlik testi kaynak görünümüyle çalışır. Bu değişiklikten sonra SQL Server'a erişilemediği için yeniden çalıştırılmadı; kaynak görünümü önceki davranışı korur.
+
+## 11. Eksik veri çekimi ve fiyat düzeyi (2026-11-14)
+
+**Bulgu.** Canlı uygulamada (Streamlit Cloud) BİM 2025 hasılatı 761,3 milyar TL ve reel büyüme %11,9 göründü; doğrusu 721,1 ve %6,0. Neden: kaynak (isyatirimhisse) her yıl için tek istek atar, 10 sn'lik sabit zaman aşımında yalnız uyarı yazıp o yılı atlar. Bulut sunucusundaki çekimde 2022 ve 2026/9 sütunları gelmemişti. 2026/9 raporu yayımlandığı için kaynak 2025 yıllığını Eylül 2026 fiyatıyla verirken, 2026/9 sütunu eksik olduğundan `pricebasis` kolonu Haziran 2026 fiyatında saydı: 896,4 / 1,1775 = 761,3 (doğrusu 896,4 / 1,2430 = 721,2). Formül değil, veri tamlığı hatası.
+
+**Düzeltme (`bistfa/source.py`).**
+- Yıllar tek tek çekilir; kütüphanenin uyarı çıktısı yakalanır, zaman aşımına düşen yıl beklemeyle 4 kez yeniden denenir. Yine alınamazsa yükleme durur ve "tekrar deneyin" mesajı verilir; kısmi veri döndürülmez, önbelleğe yazılmaz.
+- Kütüphane modülündeki istek zaman aşımı 30 sn'ye çıkarıldı (yalnız o modülde). Ölçüm: yanıtlar ya ~0,3 sn ya ~10,2 sn sürüyor; 10 sn sınırı ikinci grubu kesiyordu.
+- Eksiksiz çekimden sonra `app/.cache/<KOD>.meta.json` yazılır. Bu dosyası olmayan önbellek güvenilmez sayılıp yeniden çekilir; eksiksiz önbellek 7 günden eskiyse yenilenir, yenilenemezse eski kopya "önbellek (yenilenemedi)" etiketiyle kullanılır.
+- İstekler hatasız döndükten sonra kalan boşluklar kaynağın kendi boşluklarıdır ve eskisi gibi modelde "gap" olarak gösterilir.
+
+**Doğrulama.** Yeni testler: zaman aşımı sonrası yeniden deneme, kalıcı zaman aşımında kısmi veri reddi, işaretsiz önbelleğe güvenmeme, eski önbellek davranışı (test_core: 13/13). Taze çekim (14.11.2026, son sütun 2026/9): 2025 hasılatı BİM 721,2 (açıklanan 721,0), Migros 412,8 (413,0), Şok 278,9 (278,8) milyar TL. Testler `BISTFA_OFFLINE=1` ile ağa çıkmadan önbellekten çalışır.

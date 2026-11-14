@@ -2,12 +2,17 @@
 Çekirdek birim testleri (SQL gerektirmez). Çalıştırma: python -m pytest tests  ya da  python tests/test_core.py
 Perakende şirketlerinin ham CSV'leri data/raw içinde olmalıdır (SQL projesiyle aynı veri).
 """
+import os
+os.environ.setdefault("BISTFA_OFFLINE", "1")   # önbellek olduğu gibi okunur; testler ağa çıkmaz
+import datetime as dt
+import json
 import math
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from bistfa import company, statements, risk  # noqa: E402
+from bistfa import company, statements, risk, source  # noqa: E402
 from bistfa.periods import parse, safe_change  # noqa: E402
 
 P = parse("2025/12")
@@ -113,6 +118,74 @@ def test_altman_eligibility():
     co = company.load("BIMAS")
     assert risk.altman_z2(co, P).shown
     assert not risk.altman_z2(co, parse("2025/9")).shown
+
+
+def _frame(year, quarters):
+    import pandas as pd
+    d = {"FINANCIAL_ITEM_CODE": ["3C"], "FINANCIAL_ITEM_NAME_TR": ["Hasılat"], "FINANCIAL_ITEM_NAME_EN": ["Revenue"],
+         "SYMBOL": ["TEST"]}
+    d.update({f"{year}/{m}": [1.0] for m in quarters})
+    return pd.DataFrame(d)
+
+
+def test_fetch_retries_timeouts_and_never_returns_partial_data():
+    calls = {}
+
+    def flaky(symbols, start_year, end_year, **kw):        # 2026: ilk istek zaman aşımı, ikincisi gelir
+        calls[start_year] = calls.get(start_year, 0) + 1
+        if start_year == 2026 and calls[start_year] == 1:
+            print(f"[Warning] Could not fetch data for '{symbols}' in one period: Read timed out.")
+            raise ValueError("No financial data was fetched for any symbol.")
+        return _frame(start_year, (3, 6, 9) if start_year == 2026 else (3, 6, 9, 12))
+
+    old = source.START_YEAR
+    source.START_YEAR = 2025
+    try:
+        df = source._fetch_live("TEST", 2026, fetch=flaky, sleep=lambda s: None)
+        assert source.period_cols(df) == ["2025/3", "2025/6", "2025/9", "2025/12", "2026/3", "2026/6", "2026/9"]
+        assert calls[2026] == 2
+
+        def dead(symbols, start_year, end_year, **kw):     # 2026 hiç gelmiyor: kısmi veri döndürülmemeli
+            if start_year == 2026:
+                print("[Warning] Could not fetch data for 'TEST' in one period: Read timed out.")
+                raise ValueError("No financial data was fetched for any symbol.")
+            return _frame(start_year, (3, 6, 9, 12))
+        try:
+            source._fetch_live("TEST", 2026, fetch=dead, sleep=lambda s: None)
+            raise AssertionError("kısmi veri kabul edildi")
+        except source.FetchError as e:
+            assert "2026" in str(e)
+    finally:
+        source.START_YEAR = old
+
+
+def test_cache_without_completeness_marker_is_not_trusted():
+    old_dir, old_fetch, old_env = source.CACHE_DIR, source._fetch_live, source.os.environ.pop("BISTFA_OFFLINE", None)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            source.CACHE_DIR = Path(tmp)
+            _frame(2025, (3, 6, 9, 12)).to_csv(Path(tmp) / "TEST.csv", index=False, encoding="utf-8-sig")
+
+            def down(t, y, **kw):
+                raise source.FetchError("ağ yok")
+            source._fetch_live = down
+            try:                                              # işaretsiz (eski/eksik) önbellek: kullanılmaz
+                source.load("TEST")
+                raise AssertionError("işaretsiz önbellek kullanıldı")
+            except source.FetchError:
+                pass
+            stale = (dt.datetime.now() - dt.timedelta(days=30)).isoformat(timespec="seconds")
+            (Path(tmp) / "TEST.meta.json").write_text(json.dumps({"version": source.CACHE_VERSION, "complete": True,
+                                                                  "fetched_at": stale}), encoding="utf-8")
+            r = source.load("TEST")                           # eksiksiz ama eski: yenilenemezse eski kopya
+            assert r.origin == "önbellek (yenilenemedi)" and source.period_cols(r.frame)[-1] == "2025/12"
+            source._fetch_live = lambda t, y, **kw: _frame(2026, (3, 6, 9))
+            r = source.load("TEST")                           # yenilenebiliyorsa yeni veri ve işaret yazılır
+            assert r.origin == "canlı" and source._read_meta("TEST")["complete"]
+    finally:
+        source.CACHE_DIR, source._fetch_live = old_dir, old_fetch
+        if old_env is not None:
+            source.os.environ["BISTFA_OFFLINE"] = old_env
 
 
 if __name__ == "__main__":

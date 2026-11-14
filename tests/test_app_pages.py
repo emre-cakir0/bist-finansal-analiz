@@ -2,6 +2,8 @@
 Arayüz duman testi: 8 sayfanın her biri birkaç şirket/dönem için başsız (headless) çalıştırılır ve istisna
 olmadığı doğrulanır. Çalıştırma (proje klasöründen):  python tests/test_app_pages.py
 """
+import os
+os.environ.setdefault("BISTFA_OFFLINE", "1")   # önbellek olduğu gibi okunur; testler ağa çıkmaz
 import sys
 from pathlib import Path
 

@@ -6,6 +6,8 @@ SQL hattı bakiyelerde DÖNEM SONU kullanır; karşılaştırma bistfa'da force_
 olarak hesaplamadığı durumlar (ör. FAVÖK ≤ hasılatın %1'i, negatif özkaynak) "kural farkı" olarak ayrı sayılır.
 ebitda_to_finance_expense: SQL'deki 3HC işaret varsayımı 05.11.2026'da düzeltildi (bkz. docs/APP_AUDIT.md) ve artık karşılaştırılır.
 """
+import os
+os.environ.setdefault("BISTFA_OFFLINE", "1")   # önbellek olduğu gibi okunur; testler ağa çıkmaz
 import sys
 from pathlib import Path
 
