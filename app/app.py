@@ -17,16 +17,18 @@ sys.path.insert(0, str(HERE.parent))
 
 import ui  # noqa: E402
 import views  # noqa: E402
-from bistfa import company, peers  # noqa: E402
+from bistfa import company, peers, source  # noqa: E402
 from bistfa.source import FetchError, SOURCE_NAME, SOURCE_NOTE, isyatirim_url, kap_url  # noqa: E402
 
 st.set_page_config(page_title="BIST Finansal Analiz", page_icon="📊", layout="wide", initial_sidebar_state="expanded")
 st.markdown(ui.CSS, unsafe_allow_html=True)
 
 
-@st.cache_resource(show_spinner=False, max_entries=40)
-def load_company(ticker: str, token: int, basis: str = "common"):
-    return company.load(ticker, token, basis)
+@st.cache_resource(show_spinner=False, max_entries=40, ttl=6 * 3600)
+def load_company(ticker: str, token: int, basis: str = "common", data_version: int = 2):
+    # Bellekte en çok 6 saat: disk önbelleğinin 7 günlük yenileme kuralı uzun açık kalan süreçte de işlesin.
+    # data_version: veri katmanı değişince eski bellek kayıtları kullanılmasın (source.CACHE_VERSION).
+    return company.Company(source.load(ticker.strip().upper(), refresh=token > 0), basis)
 
 
 ss = st.session_state
