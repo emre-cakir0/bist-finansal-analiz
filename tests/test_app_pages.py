@@ -10,7 +10,8 @@ from streamlit.testing.v1 import AppTest
 ROOT = Path(__file__).resolve().parent.parent
 PAGES = ["page_summary", "page_balance", "page_performance", "page_cash", "page_risk", "page_peers",
          "page_statements", "page_checkup"]
-CASES = [("BIMAS", "2025/12"), ("CRFSA", "2025/12"), ("MGROS", "2022/12"), ("SOKM", "2025/9"), ("BIMAS", "2021/12")]
+CASES = [("BIMAS", "2025/12", "common"), ("CRFSA", "2025/12", "common"), ("MGROS", "2022/12", "common"), ("SOKM", "2025/9", "common"),
+         ("BIMAS", "2021/12", "common"), ("BIMAS", "2023/9", "common"), ("MGROS", "2024/12", "published"), ("SOKM", "2025/6", "published")]
 
 SCRIPT = """
 import sys
@@ -19,25 +20,25 @@ import streamlit as st
 import ui, views
 from bistfa import company
 st.markdown(ui.CSS, unsafe_allow_html=True)
-co = company.load("{t}")
+co = company.load("{t}", basis="{b}")
 P = co.period("{p}")
 views.CTX.update(co=co, P=P, scale=1e6, trend=[x for x in co.periods if x.month == P.month and x.key <= P.key][-7:],
-                 load=company.load)
+                 load=lambda t: company.load(t, basis="{b}"))
 views.{fn}()
 """
 
 
 def main() -> int:
     bad = 0
-    for t, p in CASES:
+    for t, p, b in CASES:
         for fn in PAGES:
-            at = AppTest.from_string(SCRIPT.format(app=ROOT / "app", root=ROOT, t=t, p=p, fn=fn), default_timeout=120)
+            at = AppTest.from_string(SCRIPT.format(app=ROOT / "app", root=ROOT, t=t, p=p, fn=fn, b=b), default_timeout=120)
             at.run()
             if at.exception:
                 bad += 1
-                print(f"HATA {t} {p} {fn}: {at.exception[0].value}")
+                print(f"HATA {t} {p} {b} {fn}: {at.exception[0].value}")
             else:
-                print(f"ok   {t} {p} {fn}")
+                print(f"ok   {t} {p} {b} {fn}")
     at = AppTest.from_file(str(ROOT / "app" / "app.py"), default_timeout=120)
     at.run()
     print("app.py giriş:", "HATA " + str(at.exception[0].value) if at.exception else "ok")

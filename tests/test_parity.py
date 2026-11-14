@@ -65,7 +65,7 @@ def main() -> int:
     stats = {"eşit": 0, "ikisi de boş": 0, "kural farkı (bistfa boş)": 0, "SQL boş": 0, "FARK": 0}
     diffs = {}
     for t in sorted(sql["ticker"].unique()):
-        co = company.load(t)
+        co = company.load(t, basis="source")   # SQL hattı kaynak kolonlarını olduğu gibi kullanır
         for _, row in sql[sql.ticker == t].iterrows():
             P = co.period(row.period_label)
             for col, mid in MAP.items():

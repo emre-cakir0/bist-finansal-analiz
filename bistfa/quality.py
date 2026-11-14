@@ -25,8 +25,9 @@ KNOWN_ISSUES = {
 }
 
 
-def quarterly_revenue(wide: pd.DataFrame, periods: list[Period]) -> pd.Series:
-    """Bağımsız çeyrek hasılatı = YTD(t) − YTD(t−1) aynı yıl içinde; Q1 = YTD. Önceki çeyrek yoksa türetilmez."""
+def quarterly_revenue(wide: pd.DataFrame, periods: list[Period], kinds: dict | None = None) -> pd.Series:
+    """Bağımsız çeyrek hasılatı = YTD(t) − YTD(t−1) aynı yıl içinde; Q1 = YTD. Önceki çeyrek yoksa ya da iki kolon
+    farklı fiyat düzeyindeyse (biri nominal, diğeri düzeltilmiş) türetilmez."""
     out = {}
     have = {p.label for p in periods}
     for p in periods:
@@ -35,12 +36,18 @@ def quarterly_revenue(wide: pd.DataFrame, periods: list[Period]) -> pd.Series:
             out[p.label] = v
         else:
             prev = f"{p.year}/{p.month - 3}"
-            out[p.label] = v - wide.at["3C", prev] if prev in have else None
+            mixed = bool(kinds) and kinds.get(p.label) != kinds.get(prev)
+            out[p.label] = v - wide.at["3C", prev] if prev in have and not mixed else None
     return pd.Series(out, dtype=float)
 
 
-def detect_issues(ticker: str, wide: pd.DataFrame, periods: list[Period]) -> dict[str, str]:
-    out = {p: txt for (t, p), txt in KNOWN_ISSUES.items() if t == ticker}
+def detect_issues(ticker: str, wide: pd.DataFrame, periods: list[Period], kinds: dict | None = None,
+                  kinds_bs: dict | None = None, legacy: bool = True) -> dict[str, str]:
+    """legacy=True (kaynak görünümü): bilinen kaynak fiyat düzeyi farkları da listelenir. Ortak fiyat ve yayımlanan
+    görünümlerinde bu farklar pricebasis ile giderildiği için yalnız otomatik tespit çalışır."""
+    out = {p: txt for (t, p), txt in KNOWN_ISSUES.items() if t == ticker} if legacy else {}
+    if not legacy:
+        return out   # fiyat düzeyi kuralla çözülür; çeyrek makullüğü yalnız test sonucu olarak raporlanır (mevsimsellik olabilir)
     labels = [p.label for p in periods]
     if "1BL" in wide.index:
         ta = wide.loc["1BL", labels]
@@ -49,7 +56,7 @@ def detect_issues(ticker: str, wide: pd.DataFrame, periods: list[Period]) -> dic
             if a > 0 and b > 0 and c > 0 and b / a > 1.8 and c / b < 0.75:
                 out.setdefault(labels[i], f"Otomatik tespit: toplam varlıklar önceki döneme göre {_d(b / a)} kat, sonraki "
                                           f"dönemde {_d(c / b, 2)} katına dönüyor (yeniden ifade / baz farkı şüphesi)")
-    q = quarterly_revenue(wide, periods)
+    q = quarterly_revenue(wide, periods, kinds)
     prev = None
     for p in periods:
         v = q.get(p.label)
@@ -64,8 +71,11 @@ def detect_issues(ticker: str, wide: pd.DataFrame, periods: list[Period]) -> dic
     return out
 
 
-def run_checks(ticker: str, wide: pd.DataFrame, periods: list[Period], issues: dict, gaps: list[str]) -> pd.DataFrame:
+def run_checks(ticker: str, wide: pd.DataFrame, periods: list[Period], issues: dict, gaps: list[str],
+               wide_source: pd.DataFrame | None = None, kinds: dict | None = None) -> pd.DataFrame:
+    """Toplam kimlikleri kaynaktaki hâliyle (yuvarlama toleransı TL cinsinden) sınanır; makullük seçilen fiyat düzeyinde."""
     rows = []
+    scaled, wide = wide, (wide_source if wide_source is not None else wide)
     for total, kids in C.IDENTITIES.items():
         if total not in wide.index:
             continue
@@ -80,15 +90,16 @@ def run_checks(ticker: str, wide: pd.DataFrame, periods: list[Period], issues: d
             res = "PASS" if ok else ("EXPLAINED" if p.label in issues else "FAIL")
             rows.append(("Toplam kimliği", name, p.label, res,
                          f"{total} − ({' + '.join(kids)}) = {diff:,.0f} TL".replace(",", ".")))
-    q = quarterly_revenue(wide, periods)
+    q = quarterly_revenue(scaled, periods, kinds)
     prev = None
     for p in periods:
         v = q.get(p.label)
         if p.month > 3 and v == v and v is not None and prev:
             ok = v > 0 and 0.5 <= v / prev <= 2.0
-            res = "PASS" if ok else ("EXPLAINED" if p.label in issues else "FAIL")
+            res = "PASS" if ok else ("EXPLAINED" if p.label in issues else ("FAIL" if kinds is None else "INFO"))
             rows.append(("Çeyrek makullüğü", "Türetilen çeyreklik hasılat 0,5–2,0 x önceki çeyrek", p.label, res,
-                         f"oran {v / prev:.2f}".replace(".", ",")))
+                         f"oran {v / prev:.2f}".replace(".", ",") + ("" if ok or kinds is None else
+                                                                    " (mevsimsellik ya da tek seferlik etki olabilir)")))
         prev = v
     rows.append(("Dönem bütünlüğü", "İlk ve son dönem arasında eksik çeyrek yok", None,
                  "PASS" if not gaps else "FAIL", "eksik: " + ", ".join(gaps) if gaps else f"{len(periods)} dönem"))

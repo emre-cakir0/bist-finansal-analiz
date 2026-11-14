@@ -70,22 +70,33 @@ def parse(label: str) -> Period:
 
 
 # Karşılaştırılabilirlik kodları
-NA, OK_NOMINAL, NOMINAL_TMS29, TMS29_TRANSITION, BASE_BREAK = "NA", "NOMINAL", "NOMINAL_TMS29", "TMS29_GECIS", "BASE_BREAK"
+NA, OK_NOMINAL, NOMINAL_TMS29, TMS29_TRANSITION, BASE_BREAK, REAL = "NA", "NOMINAL", "NOMINAL_TMS29", "TMS29_GECIS", "BASE_BREAK", "REAL"
 COMP_TEXT = {
     NA: "Karşılaştırma dönemi yok",
     OK_NOMINAL: "Nominal karşılaştırma (TMS 29 öncesi)",
     NOMINAL_TMS29: "Nominal: her kolon kendi dönem sonu fiyatıyla; reel değişim değildir",
-    TMS29_TRANSITION: "TMS 29 geçişi: önceki dönem nominal, cari dönem enflasyona göre düzeltilmiş; karşılaştırılamaz",
+    TMS29_TRANSITION: "Geçiş dönemi: önceki dönem nominal, cari dönem enflasyona göre düzeltilmiş; TL değişimi hesaplanmaz",
     BASE_BREAK: "Kaynakta baz kırılması: karşılaştırılamaz",
+    REAL: "Reel karşılaştırma: iki dönem de aynı fiyat düzeyinde (enflasyondan arındırılmış)",
 }
-COMPARABLE_AMOUNTS = {OK_NOMINAL, NOMINAL_TMS29}   # TL tutar değişimi gösterilebilir (nominal etiketiyle)
+COMPARABLE_AMOUNTS = {OK_NOMINAL, NOMINAL_TMS29, REAL}   # TL tutar değişimi gösterilebilir (reel ya da nominal etiketiyle)
 
 
-def comparability(cur: Period, prev: Period | None, issues: dict, available: set) -> str:
+def comparability(cur: Period, prev: Period | None, issues: dict, available: set, kinds: dict | None = None) -> str:
+    """kinds: dönem → 'real' (ortak fiyat), 'own' (kendi fiyatı), 'nominal'. Verilirse fiyat düzeyine göre karar verilir."""
     if prev is None or prev.label not in available:
         return NA
     if cur.label in issues or prev.label in issues:
         return BASE_BREAK
+    if kinds:
+        a, b = kinds.get(cur.label), kinds.get(prev.label)
+        if a == b == "real":
+            return REAL
+        if a == b == "nominal":
+            return OK_NOMINAL
+        if "nominal" in (a, b):
+            return TMS29_TRANSITION
+        return NOMINAL_TMS29
     if cur.tms29 and not prev.tms29:
         return TMS29_TRANSITION
     return NOMINAL_TMS29 if cur.tms29 else OK_NOMINAL

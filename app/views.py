@@ -14,7 +14,7 @@ import ui
 from bistfa import findings as FD
 from bistfa import metrics as M
 from bistfa import peers, report, risk, statements
-from bistfa.periods import COMP_TEXT, COMPARABLE_AMOUNTS, comparability, safe_change
+from bistfa.periods import COMP_TEXT, COMPARABLE_AMOUNTS, safe_change
 from bistfa.source import SOURCE_NAME, SOURCE_NOTE, kap_url
 
 CTX: dict = {}
@@ -34,9 +34,10 @@ def _v(co, code, label):
 def page_summary():
     co, P, scale, trend = _c()
     ui.page_head("Yönetici özeti", co, P)
+    ui.lead(co, P)
     prev = P.prior_comparable()
     ui.note(f"Karşılaştırma dönemi: <b>{prev.label}</b> (aynı uzunlukta önceki dönem). Oranlarda fark puan/kat olarak, "
-            f"TL büyüklüklerde nominal yüzde olarak verilir; TMS 29 döneminde tutar değişimi reel büyüme değildir. "
+            f"TL büyüklüklerde yüzde olarak verilir ve reel mi nominal mi olduğu kartta yazar. "
             f"Tutarlar {ui.scale_name(scale)}. Her kartın altındaki <i>Nasıl hesaplandı?</i> formülü ve kaynak kalemleri gösterir.")
     ui.kpi_row(co, ["revenue", "ebitda", "net_income", "fcf"], P, scale, trend)
     ui.kpi_row(co, ["ebitda_margin", "net_margin", "roe", "nd_ebitda"], P, scale, trend)
@@ -51,15 +52,15 @@ def page_summary():
         ui.finding_list(FD.top(fs, "izlenecek", 3), "!", ui.RED)
     info = FD.top(fs, "bilgi", 3)
     if info:
-        ui.finding_list(info, "i", ui.BLUE)
+        ui.finding_list(info, "i", ui.C1)
 
     c1, c2 = st.columns([3, 2])
     with c1:
-        ui.section("Hasılat ve net kâr", f"{'Yıllık' if P.is_annual else f'{P.months} aylık YTD'} dönemler · {ui.scale_name(scale)} · nominal")
-        ui.show(ui.bar_chart(co, ["revenue", "net_income"], trend, scale, [ui.BLUE, ui.ORANGE]))
+        ui.section("Hasılat ve net kâr", f"{'Yıllık' if P.is_annual else f'{P.months} aylık YTD'} dönemler · {ui.scale_name(scale)} · {co.basis_name}")
+        ui.show(ui.bar_chart(co, ["revenue", "net_income"], trend, scale, [ui.C1, ui.C3]))
     with c2:
-        ui.section("Marjlar", "Aynı kolon içi oranlar: TMS 29 fiyat bazından etkilenmez")
-        ui.show(ui.line_chart(co, ["gross_margin", "ebitda_margin", "net_margin"], trend, colors=[ui.TEAL, ui.BLUE, ui.ORANGE]))
+        ui.section("Marjlar", "Aynı dönem içi oranlar: fiyat düzeyinden etkilenmez")
+        ui.show(ui.line_chart(co, ["gross_margin", "ebitda_margin", "net_margin"], trend, colors=[ui.C1, ui.C2, ui.C3]))
     ui.na_note(co, ["revenue", "net_income", "gross_margin", "ebitda_margin", "net_margin"], trend)
     footer()
 
@@ -120,7 +121,7 @@ def page_balance():
                                      "2BA", "D_TOTAL_LIAB", "2N"])
 
     ui.section("Net işletme sermayesi", "Dönen varlıklar − kısa vadeli yükümlülükler; negatif değer KV yükümlülüklerin dönen varlıkları aştığını gösterir")
-    ui.show(ui.bar_chart(co, ["nwc"], trend, scale, [ui.TEAL], height=260))
+    ui.show(ui.bar_chart(co, ["nwc"], trend, scale, [ui.C2], height=260))
     footer()
 
 
@@ -136,7 +137,7 @@ def _horizontal_table(co, P, scale, codes):
                "_cls": "total" if code in ("1BL", "2N", "D_TOTAL_LIAB") else ""}
         for rl in refs:
             prevv = _v(co, code, rl)
-            comp = comparability(P, co.period(rl), co.issues, set(co.period_labels))
+            comp = co.comp(P, co.period(rl), stock=True)
             diff, pc, why = safe_change(cur, prevv)
             ok = comp in COMPARABLE_AMOUNTS
             rec[rl] = prevv
@@ -153,15 +154,15 @@ def _horizontal_table(co, P, scale, codes):
         if isinstance(v, tuple):
             pc, why = v
             if pc is None:
-                return f'<span title="{ui.esc(why)}" style="color:#8C9AC0">n.a.</span>', False
+                return f'<span title="{ui.esc(why)}" style="color:#8E928A">n.a.</span>', False
             return ("−%" if pc < 0 else "+%") + ui.num(abs(pc) * 100, 1), pc < 0
         if v is None or (isinstance(v, float) and math.isnan(v)):
-            return '<span style="color:#5F6F96">—</span>', False
+            return '<span style="color:#6E726A">—</span>', False
         return ui.num(v / scale, 1), v < 0
     st.markdown(ui.simple_table_html(df, "Kalem", cols, fmt), unsafe_allow_html=True)
-    notes = {rl: COMP_TEXT[comparability(P, co.period(rl), co.issues, set(co.period_labels))] for rl in refs}
+    notes = {rl: COMP_TEXT[co.comp(P, co.period(rl), stock=True)] for rl in refs}
     ui.note(f"Tutarlar {ui.scale_name(scale)}. " + " · ".join(f"<b>{k}</b>: {ui.esc(v)}" for k, v in notes.items())
-            + ". 'n.a.' üzerine gelince neden gösterilmediği görünür (sıfır baz, işaret değişimi, baz kırılması).")
+            + ". 'n.a.' üzerine gelince neden gösterilmediği görünür (sıfır baz, işaret değişimi, geçiş dönemi).")
 
 
 # =================================================================================================
@@ -173,7 +174,7 @@ def page_performance():
     ui.kpi_row(co, ["gross_margin", "ebit_margin", "roe", "roa"], P, scale, trend)
     c1, c2 = st.columns(2)
     with c1:
-        ui.section("Gelir tablosu trendi", f"{ui.scale_name(scale)} · nominal; TMS 29 döneminde yıllar arası reel karşılaştırma değildir")
+        ui.section("Gelir tablosu trendi", f"{ui.scale_name(scale)} · {co.basis_name}")
         ui.show(ui.bar_chart(co, ["revenue", "gross_profit", "ebit", "net_income"], trend, scale))
     with c2:
         ui.section("Marj trendi", "Kâr kalemi / hasılat, aynı dönem kolonu")
@@ -181,7 +182,7 @@ def page_performance():
     c1, c2 = st.columns(2)
     with c1:
         ui.section("ROE ve ROA", "Getiriler ara dönemde yıllıklandırılır; ortalama bakiye kuralı kart açıklamasında")
-        ui.show(ui.line_chart(co, ["roe", "roa"], trend, colors=[ui.BLUE, ui.TEAL]))
+        ui.show(ui.line_chart(co, ["roe", "roa"], trend, colors=[ui.C1, ui.C2]))
     with c2:
         ui.section("DuPont ayrıştırması", "ROE = net kâr marjı × varlık devir hızı × özkaynak çarpanı")
         _dupont(co, P, trend)
@@ -238,18 +239,18 @@ def page_cash():
     c1, c2 = st.columns(2)
     with c1:
         ui.section("İşletme nakdi, yatırım ve serbest nakit", f"{ui.scale_name(scale)} · YTD akışlar")
-        ui.show(ui.bar_chart(co, ["ocf", "capex", "fcf"], trend, scale, [ui.BLUE, ui.ORANGE, ui.TEAL]))
+        ui.show(ui.bar_chart(co, ["ocf", "capex", "fcf"], trend, scale, [ui.C1, ui.C3, ui.C2]))
     with c2:
         ui.section("Nakit dönüşümü", "İşletme nakdi / FAVÖK ve işletme nakdi / net kâr (1,0 = kârın tamamı nakde döndü)")
-        ui.show(ui.line_chart(co, ["ocf_to_ebitda", "ocf_to_net_income"], trend, pct=False, colors=[ui.BLUE, ui.ORANGE]))
+        ui.show(ui.line_chart(co, ["ocf_to_ebitda", "ocf_to_net_income"], trend, pct=False, colors=[ui.C1, ui.C3]))
     c1, c2 = st.columns(2)
     with c1:
         ui.section("İşletme sermayesi günleri", "Stok + alacak − borç günü = nakit dönüşüm döngüsü")
         ui.show(ui.line_chart(co, ["dio", "dso", "dpo", "ccc"], trend, pct=False,
-                              colors=[ui.ORANGE, ui.TEAL, ui.PINK, ui.BLUE], dash_ids=("ccc",)))
+                              colors=[ui.C3, ui.C2, ui.C4, ui.C1], dash_ids=("ccc",)))
     with c2:
         ui.section("Yatırım yoğunluğu", "CapEx / hasılat ve CapEx / amortisman")
-        ui.show(ui.line_chart(co, ["capex_to_revenue", "fcf_margin"], trend, colors=[ui.ORANGE, ui.TEAL]))
+        ui.show(ui.line_chart(co, ["capex_to_revenue", "fcf_margin"], trend, colors=[ui.C3, ui.C2]))
     ui.section("Yorum", "Değerlerden kurala dayalı üretilir")
     for t in _cash_story(co, P):
         st.markdown("- " + t)
@@ -283,8 +284,8 @@ def _cash_story(co, P):
         out.append(f"CapEx amortismanın **{ui.num(ce, 2)} katı**" + (" (kapasite büyütme yönünde)." if ce > 1.2 else
                                                                       " (ağırlıkla yenileme düzeyinde)." if ce >= 0.8 else
                                                                       " (amortismanın altında yatırım)."))
-    if P.tms29:
-        out.append("TMS 29 döneminde nakit akış kalemleri de dönem sonu fiyatıyla ifade edilir; oranlar aynı kolon içinde tutarlıdır.")
+    if co.kinds.get(P.label) == "real":
+        out.append(f"Nakit akış kalemleri de {co.basis_name} gösterilir; önceki dönemlerle reel olarak karşılaştırılabilir.")
     return out or ["Yorum için yeterli veri yok."]
 
 
@@ -315,11 +316,11 @@ def page_risk():
     with c1:
         ui.section("Likidite trendi")
         ui.show(ui.line_chart(co, ["current_ratio", "quick_ratio", "cash_ratio"], trend, pct=False,
-                              colors=[ui.BLUE, ui.TEAL, ui.ORANGE]))
+                              colors=[ui.C1, ui.C2, ui.C3]))
     with c2:
         ui.section("Kaldıraç trendi", "Negatif net borç / FAVÖK = net nakit")
         ui.show(ui.line_chart(co, ["nd_ebitda", "fin_debt_to_equity", "liab_to_equity"], trend, pct=False,
-                              colors=[ui.PINK, ui.BLUE, ui.YELLOW]))
+                              colors=[ui.C4, ui.C1, ui.C5]))
     ui.na_note(co, ["current_ratio", "nd_ebitda", "fin_debt_to_equity", "int_cov_ebit"], trend)
     _altman(co, P)
     footer()
@@ -411,7 +412,7 @@ def page_peers():
     def fmt(v, r):
         val, unit, why = v
         if val is None:
-            return f'<span title="{ui.esc(why)}" style="color:#8C9AC0">n.a.</span>', False
+            return f'<span title="{ui.esc(why)}" style="color:#8E928A">n.a.</span>', False
         return ui.fmt_value(val, unit), val < 0
     ui.section("Oran tablosu", f"{P.label} · n.a. üzerine gelince neden hesaplanamadığı görünür")
     st.markdown(ui.simple_table_html(pd.DataFrame(rows), "Oran", names + ["Grup medyanı"], fmt), unsafe_allow_html=True)
@@ -424,18 +425,18 @@ def page_peers():
             v = o.metric(k, P).value
             xs.append(o.name)
             ys.append(v)
-            cs.append(ui.BLUE if t == co.ticker else "#5A6C9C")
+            cs.append(ui.C1 if t == co.ticker else "#5E625B")
             tx.append(ui.fmt_value(v, unit) if v is not None else "n.a.")
         fig = go.Figure(go.Bar(x=xs, y=ys, marker_color=cs, text=tx, textposition="outside",
                                hovertemplate="%{x}: %{text}<extra></extra>"))
         med = rows[i]["Grup medyanı"][0]
         if med is not None:
-            fig.add_hline(y=med, line_dash="dot", line_color=ui.YELLOW, annotation_text="medyan",
-                          annotation_font_color=ui.YELLOW)
+            fig.add_hline(y=med, line_dash="dot", line_color=ui.C5, annotation_text="medyan",
+                          annotation_font_color=ui.C5)
         ui.style_fig(fig, 260, legend=False, yfmt=".0%" if unit == "pct" else None)
         with cols[i % 2]:
-            ui.section(M.BY_ID[k].name, f"{co.name} mavi; diğerleri gri (etiketli)")
-            ui.show(fig)
+            ui.section(M.BY_ID[k].name, f"{co.name} vurgulu; diğerleri gri (etiketli)")
+            ui.show(fig, key=f"peer_{k}")
     footer()
 
 
@@ -541,9 +542,9 @@ def _equity_tab(co, periods, scale):
     ui.section("Hareket mutabakatı", "Açılış + dönem kârı + temettü + sermaye artırımı + diğer = kapanış")
     m = mv.assign(Kod="", Düzey=0, Tür=["total", "line", "line", "line", "derived", "total"])
     st.markdown(ui.statement_html(m, labels, "Tutar", scale), unsafe_allow_html=True)
-    if any(p.tms29 for p in years):
-        ui.note("TMS 29 yıllarında açılış bakiyesi kaynakta önceki yıl sonu fiyatıyla durduğundan 'Diğer hareketler' "
-                "satırı enflasyon düzeltmesi farkını da taşır ve büyük görünebilir.")
+    if co.basis != "common" and any(p.tms29 for p in years):
+        ui.note("Bu görünümde açılış ve kapanış bakiyeleri farklı fiyat düzeylerinde olduğundan 'Diğer hareketler' satırı "
+                "enflasyon düzeltmesi farkını da taşır. Ortak fiyat görünümünde bu fark ortadan kalkar.")
 
 
 # =================================================================================================
@@ -627,6 +628,6 @@ def footer():
     st.markdown(f'<div class="bf-foot"><b>Kaynak:</b> {ui.esc(SOURCE_NAME)} · veri {co.raw.fetched_at:%d.%m.%Y %H:%M} '
                 f'({ui.esc(co.raw.origin)}) · <a href="{kap_url(co.ticker)}" target="_blank">KAP bildirim sorgu</a><br>'
                 f'{ui.esc(SOURCE_NOTE)} Kapsam: kaynakta belirtilmemiş (tek seri; solo/konsolide karıştırılmaz). '
-                'TMS 29 döneminde (2023/12 ve sonrası) her kolon kendi dönem sonu satın alma gücüyle ifade edilir; '
-                'yıllar arası TL değişimleri nominaldir, reel büyüme gösterilmez. Yatırım tavsiyesi değildir.</div>',
+                f'Tutarlar: {ui.esc(co.basis_name)}; kaynak kolonları TÜİK TÜFE ile bu fiyat düzeyine çevrilmiştir '
+                '(yöntem: docs/APP_AUDIT.md). Yatırım tavsiyesi değildir.</div>',
                 unsafe_allow_html=True)

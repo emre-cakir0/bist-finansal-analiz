@@ -45,7 +45,7 @@ def excel(co, P: Period, periods: list[Period]) -> bytes:
         info = pd.DataFrame({
             "Alan": ["Şirket", "Seçili dönem", "Dönem niteliği", "Fiyat bazı", "Kaynak", "Kaynak notu", "Veri alınma",
                      "Kapsam", "Para birimi / ölçek", "Rapor oluşturma"],
-            "Değer": [f"{co.name} ({co.ticker})", P.label, P.kind, P.price_basis, SOURCE_NAME, SOURCE_NOTE,
+            "Değer": [f"{co.name} ({co.ticker})", P.label, P.kind, co.basis_text(P), SOURCE_NAME, SOURCE_NOTE,
                       f"{co.raw.fetched_at:%d.%m.%Y %H:%M} ({co.raw.origin})", co.facts["scope"].iloc[0], "TRY, TL (birim)",
                       _dt.datetime.now().strftime("%d.%m.%Y %H:%M")]})
         info.to_excel(xw, sheet_name="Kaynak", index=False)
@@ -89,7 +89,7 @@ table{{border-collapse:collapse;width:100%;font-size:13px}}td,th{{border-bottom:
 .n{{text-align:right;white-space:nowrap}}.s{{color:#56658A;font-size:12px}}.box{{background:#F6F8FD;border:1px solid #DCE3F1;border-radius:8px;padding:10px 14px}}
 @media print{{body{{margin:0}}}}</style></head><body>
 <h1>{e(co.name)} ({e(co.ticker)}) · Finansal check-up</h1>
-<p class=s>Dönem {e(P.label)} ({e(P.kind)}) · {e(P.price_basis)} · Kaynak: {e(SOURCE_NAME)} · Veri alınma {co.raw.fetched_at:%d.%m.%Y %H:%M}
+<p class=s>Dönem {e(P.label)} ({e(P.kind)}) · {e(co.basis_text(P))} · Kaynak: {e(SOURCE_NAME)} · Veri alınma {co.raw.fetched_at:%d.%m.%Y %H:%M}
 · Rapor {_dt.datetime.now():%d.%m.%Y %H:%M}</p>
 <div class=box>{e(SOURCE_NOTE)} Bu rapor yatırım tavsiyesi ya da fiyat tahmini değildir.</div>
 <h2>Temel göstergeler</h2><table><tr><th>Metrik</th><th class=n>Değer (TL: milyon)</th><th>Önceki karşılaştırılabilir döneme göre</th><th>Formül</th></tr>{rows}</table>
@@ -97,5 +97,5 @@ table{{border-collapse:collapse;width:100%;font-size:13px}}td,th{{border-bottom:
 <h2>Altman Z''-skoru</h2>{alt_html}
 <h2>Hesaplanamayan metrikler</h2><ul>{''.join(f'<li>{e(r.name)}: {e(r.reason)}</li>' for r in na) or '<li>Yok</li>'}</ul>
 <h2>Veri uyarıları</h2><ul>{warn or '<li>Kayıtlı uyarı yok</li>'}{''.join(f'<li>Eksik dönem: {e(g)}</li>' for g in co.gaps)}</ul>
-<p class=s>Yöntem: oranlar aynı dönem kolonu içinde hesaplanır; TMS 29 döneminde TL tutar değişimleri nominaldir. FAVÖK hesaplanmıştır
+<p class=s>Yöntem: tutarlar {e(co.basis_name)} gösterilir; kaynak kolonları TÜFE ile bu fiyat düzeyine çevrilmiştir. FAVÖK hesaplanmıştır
 (net faaliyet kârı + amortisman). Tarayıcıda Yazdır → PDF olarak kaydet ile PDF alınabilir.</p></body></html>"""

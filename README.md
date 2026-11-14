@@ -3,7 +3,6 @@
 ## Canlı uygulama
 [📊 BIST Finansal Analiz uygulamasını aç](https://tgorl3ydsrjfbzbzk7ymx7.streamlit.app/)
 
-
 Type a BIST ticker and get a full financial-statement analysis: the statements themselves, horizontal and vertical analysis, profitability and DuPont, cash flow and working capital, liquidity and leverage, peer comparison and a rule-based check-up report. Every number shows where it comes from, and every ratio shows how it was calculated. Built with Python and Streamlit; the interface is in Turkish.
 
 This is the follow-up to [bist-retail-finance](https://github.com/emre-cakir0/bist-retail-finance), a SQL Server and Power BI pipeline for four BIST retailers. The analysis rules developed there were moved into a Python package (`bistfa`) that works for any non-financial BIST company, and the app's results are tested against that pipeline (3,136 values, 0 differences).
@@ -33,12 +32,30 @@ This is the follow-up to [bist-retail-finance](https://github.com/emre-cakir0/bi
 
 **One metric registry.** 43 metrics are defined once in `bistfa/metrics.py`. Each result returns its value, unit, formula, the exact input items used, the balance basis, whether it was annualised and, if it could not be computed, why. There are no silent zeros: a blank value always has a reason in the interface.
 
-**Comparability rules for Turkish inflation accounting (TMS 29).**
-- From 2023/12 each column is in its own period-end purchasing power. Ratios are computed inside a single column. TL changes across periods are labelled *nominal*, and real growth is not shown.
-- Periods with a known or auto-detected price-basis break in the source never show TL changes.
+**Real comparisons under Turkish inflation accounting (TMS 29).** The source does not give each period as first published: a period column carries the figure restated in the *following* report (annual 2024 is in December 2025 prices; the latest year is in the prices of the latest interim report). `bistfa/pricebasis.py` works out the price level of every column, separately for flows and for balance sheets, and converts it with the official CPI series. A sidebar switch offers two views:
+- **Common prices (default):** all inflation-accounting periods are in the latest year-end prices, so periods are directly comparable and growth is **real**.
+- **As published:** each period exactly as the company reported it (the numbers quoted in news and broker reports).
+
+Ratios are the same in both views. Other rules:
+- Companies that do not apply inflation accounting (for example those with a USD functional currency) are detected and left in nominal TL.
+- Periods before inflation accounting stay nominal; no TL change is shown across the transition.
+- Where an interim income statement was later restated but its balance sheet was not (2023 interims), ratios that combine the two are not computed, and the reason is shown.
 - Comparisons always use a period of the same length (9M vs 9M); interim flows are annualised only where stated.
-- Average balances are used only when both balances are on the same price basis; otherwise period-end balances are used, and the result says so.
+- Average balances are used when opening and closing balances are on the same price level.
 - No percentage change is shown on a zero, negative or sign-changing base.
+
+The conversion is checked against published figures (billion TL, *as published* view):
+
+| Company · year · item | Published | App |
+|---|---|---|
+| BİM 2023 revenue | 328.44 | 328.44 |
+| BİM 2025 revenue | 721.0 | 721.1 |
+| Migros 2024 revenue | 293.78 | 293.78 |
+| Migros 2024 total assets | 150.06 | 150.06 |
+| Şok 2025 revenue | 278.8 | 278.8 |
+| CarrefourSA 2025 net loss | −6.54 | −6.54 |
+
+In the common-price view BİM's 2025 revenue growth is +6.0% real, the figure the company reported.
 
 **Explicit definitions.**
 - EBITDA is not reported in the source. It is calculated (net operating profit + D&A), labelled as calculated, and not used when it is below 1% of revenue.
@@ -57,11 +74,11 @@ The full audit of decisions, rules and test results is in [docs/APP_AUDIT.md](do
 
 | Test | Command | Result |
 |---|---|---|
-| Unit tests | `python tests/test_core.py` | 9 / 9: safe % change, comparability codes, statement identities, DuPont = ROE, average-balance rule, reasons for uncomputable metrics, blocked TL change on basis breaks, statements and equity reconciliation, Altman eligibility |
-| Parity with the SQL pipeline | `python tests/test_parity.py` | 28 metrics × 4 companies × 28 periods: 3,136 values, 0 differences; 5 deliberate definition differences reconstructed from source items and verified separately (needs the `bist-retail-finance` database) |
-| UI smoke test | `python tests/test_app_pages.py` | 8 pages × 5 scenarios (annual, interim, negative equity, basis break, pre-TMS 29) run headless with 0 errors |
-| Source identities | in app | 20 total-equals-components identities checked every period (e.g. BİM: 579 pass, 3 explained). Inconsistencies in the source are shown as failures, not hidden |
-| Non-retail company | ULKER | 540 checks, 0 failures; the 2022/12 and 2025 price-basis breaks were detected automatically. Bank tickers are rejected with a clear message |
+| Unit tests | `python tests/test_core.py` | 11 / 11: safe % change, comparability codes in all three price views, price conversion against 10 published figures, non-applier detection, statement identities, DuPont = ROE, average-balance rule, reasons for uncomputable metrics, real vs transition TL changes, statements and equity reconciliation, Altman eligibility |
+| Parity with the SQL pipeline | `python tests/test_parity.py` | Run on the source-column view: 28 metrics × 4 companies × 28 periods, 3,136 values, 0 differences (last run before the price-level module was added; needs the `bist-retail-finance` database) |
+| UI smoke test | `python tests/test_app_pages.py` | 8 pages × 8 scenarios (annual, interim, negative equity, transition year, pre-TMS 29, mixed-basis interim, as-published view) run headless with 0 errors |
+| Source identities | in app | 20 total-equals-components identities checked every period on the source figures (e.g. BİM: 581 pass, 0 fail). Inconsistencies in the source are shown as failures, not hidden |
+| Other companies | ULKER, THYAO, EREGL and others | ULKER: 539 checks, 0 failures after conversion, derived quarters smooth. THYAO and EREGL are detected as not applying inflation accounting and left nominal. Bank tickers are rejected with a clear message |
 
 ## Run it
 
@@ -81,6 +98,7 @@ Fetched statements are cached in `app/.cache/` and are not committed. The app li
 |---|---|
 | `bistfa/source.py` | Fetching (isyatirimhisse) with per-year retries, cache, ticker validation |
 | `bistfa/model.py`, `catalog.py`, `periods.py` | Fact table with provenance, statement layouts and derived rows, period and comparability logic |
+| `bistfa/pricebasis.py` | Price level of each source column, CPI series, conversion to common or as-published prices |
 | `bistfa/quality.py` | Identity checks, quarter plausibility, automatic basis-break detection |
 | `bistfa/metrics.py`, `company.py` | Metric registry and company view (comparison method per metric) |
 | `bistfa/statements.py`, `findings.py`, `risk.py`, `peers.py`, `report.py` | Statement tables, rule-based findings, Altman Z'', peer groups, Excel/HTML export |
@@ -91,7 +109,8 @@ Fetched statements are cached in `app/.cache/` and are not committed. The app li
 ## Limitations
 
 - **The source is unofficial.** Data comes from İş Yatırım via the `isyatirimhisse` library. KAP is the primary source, and critical figures should be checked there.
-- **Real growth is not shown.** It needs a CPI series to restate periods to a common price basis.
+- **The CPI table is maintained by hand.** `bistfa/pricebasis.py` holds monthly CPI to October 2026; newer periods stay in source prices, with a note, until the table is extended.
+- **Pre-2022 periods cannot be restated** from this source and stay nominal.
 - **Annualisation ignores seasonality.** Interim flows are scaled to a full year without adjusting for seasonal patterns.
 - **Financial debt may include leases.** The source does not separate lease liabilities.
 - **Peer groups are hand-made.** They are not an official sector classification.

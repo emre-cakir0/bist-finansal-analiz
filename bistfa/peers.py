@@ -48,6 +48,8 @@ def compatibility(base, other, period_label: str) -> tuple[bool, list[str]]:
     if other.financial_sector_flags(other.period(period_label) if period_label in other.period_labels else other.periods[-1]):
         issues.append("finans sektörü kalemleri raporlanmış; reel sektör oranlarıyla karşılaştırılmaz")
     if period_label in base.issues or period_label in other.issues:
-        issues.append("kaynakta baz kırılması: TL tutarlar karşılaştırılamaz, oranlar karşılaştırılabilir")
+        issues.append("kaynak veri uyarısı: TL tutarlar karşılaştırılmaz, oranlar karşılaştırılabilir")
+    if base.price.get("applies", True) != other.price.get("applies", True):
+        issues.append("biri enflasyon muhasebesi uyguluyor, diğeri uygulamıyor: oranlar dikkatle karşılaştırılmalı")
     ok = not any(x.startswith((period_label + " dönemi yok", "finans")) for x in issues)
     return ok, issues

@@ -99,18 +99,21 @@ class Ctx:
             self._b("dönem sonu bakiyesi")
             return end
         op = self.P.prior_year_end()
-        if self.P.tms29:
-            self._b("dönem sonu bakiyesi (TMS 29: açılış bakiyesi aynı fiyat bazında değil)")
+        kinds = getattr(self.co, "kinds_bs", {}) or {}
+        kp, ko = kinds.get(self.P.label), kinds.get(op.label)
+        same = (kp == ko and kp in ("real", "nominal")) if kinds else (not self.P.tms29 and not op.tms29)
+        if not same and (kp == "own" or (not kinds and self.P.tms29)):
+            self._b("dönem sonu bakiyesi (TMS 29: açılış bakiyesi aynı fiyat düzeyinde değil)")
             return end
         start = self.raw(code, op)
         if start is None or op.label not in self.co.period_labels:
             self._b("dönem sonu bakiyesi (açılış bakiyesi yok)")
             return end
-        if op.tms29 != self.P.tms29:
-            self._b("dönem sonu bakiyesi (açılış farklı fiyat bazında)")
+        if not same:
+            self._b("dönem sonu bakiyesi (açılış farklı fiyat düzeyinde)")
             return end
         self.inputs.append((f"{label or C.LABEL.get(code, code)} (açılış)", code, op.label, start))
-        self._b(f"ortalama bakiye ({op.label} ve {self.P.label})")
+        self._b(f"ortalama bakiye ({op.label} ve {self.P.label}" + (", aynı fiyat düzeyinde)" if kp == "real" else ")"))
         return (start + end) / 2
 
     def _b(self, t):
@@ -134,6 +137,14 @@ class Ctx:
 
     def net_debt(self):
         return self.fin_debt() - self.v("1AA") - self.v("1AB", optional=True)
+
+    def avg_pos(self, code, what):
+        """Ortalama bakiye; dönem sonu bakiyesi sıfır ya da negatifse (ör. negatif özkaynak) oran anlamsızdır."""
+        end = self.raw(code)
+        if end is not None and end <= 0:
+            self.v(code)
+            raise NA(f"{what} sıfır veya negatif; oran anlamsız")
+        return self.pos(self.avg(code), what)
 
     def pos(self, x, what):
         if x <= 0:
@@ -215,7 +226,7 @@ d("net_margin", "Net kâr marjı", "Kârlılık", "pct", "Dönem kârı (3L) / h
 @d("roe", "ROE (özkaynak kârlılığı)", "Getiri", "pct",
    "Ana ortaklık net kârı (3Z, yıllıklandırılmış) / ana ortaklık özkaynakları (2O, ortalama)", "up")
 def _(c):
-    return _div(c.flow("3Z", annualize=True), c.pos(c.avg("2O"), "Ana ortaklık özkaynağı"))
+    return _div(c.flow("3Z", annualize=True), c.avg_pos("2O", "Ana ortaklık özkaynağı"))
 
 
 @d("roa", "ROA (aktif kârlılığı)", "Getiri", "pct", "Net dönem kârı (3L, yıllıklandırılmış) / toplam varlıklar (1BL, ortalama)", "up")
@@ -232,7 +243,7 @@ def _(c): return _div(c.flow("3C", annualize=True), c.pos(c.avg("1BL"), "Toplam 
 
 @d("equity_multiplier", "Özkaynak çarpanı", "Getiri", "x",
    "Toplam varlıklar (1BL, ortalama) / ana ortaklık özkaynakları (2O, ortalama)", None, "Yüksek değer yüksek kaldıraç demektir")
-def _(c): return _div(c.avg("1BL"), c.pos(c.avg("2O"), "Ana ortaklık özkaynağı"))
+def _(c): return _div(c.avg("1BL"), c.avg_pos("2O", "Ana ortaklık özkaynağı"))
 
 
 # --- Likidite ---------------------------------------------------------------------------------------
@@ -352,12 +363,28 @@ BY_ID = {x.id: x for x in DEFS}
 GROUPS = list(dict.fromkeys(x.group for x in DEFS))
 
 
+def _is_stock_code(code: str) -> bool:
+    if code in ("D_TOTAL_LIAB", "D_EQ_RESID"):
+        return True
+    if code in ("D_EBITDA", "D_FCF"):
+        return False
+    return not C.is_flow(code)
+
+
 def compute(co, P: Period, mid: str, force_end: bool = False) -> Result:
     m = BY_ID[mid]
     c = Ctx(co, P, force_end)
     try:
         v = m.fn(c)
         status, reason = "ok", ""
+        # Akış ve bilanço aynı dönem kolonunda farklı fiyat düzeyindeyse (ör. 2023 ara dönemleri: gelir tablosu sonraki
+        # raporda düzeltilmiş, bilanço nominal) ikisini birleştiren oran anlamlı değildir.
+        if getattr(co, "basis", "source") != "source" and not force_end:
+            used = {(co.kinds_bs if _is_stock_code(code) else co.kinds).get(lbl) for _, code, lbl, _ in c.inputs if lbl == P.label}
+            used.discard(None)
+            if len(used) > 1:
+                raise NA("Bu dönemde gelir tablosu ve bilanço farklı fiyat düzeyinde (gelir tablosu sonraki raporda "
+                         "enflasyona göre düzeltilmiş, ara dönem bilançosu düzeltilmemiş); oran hesaplanmadı")
     except NA as e:
         v, status, reason = None, "na", str(e)
     except ZeroDivisionError:

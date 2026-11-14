@@ -11,6 +11,7 @@ import pandas as pd
 
 from . import catalog as C
 from .periods import Period, parse
+from . import pricebasis
 from .source import RawData, SOURCE_NAME, period_cols
 
 SCOPE = "Kaynakta belirtilmemiş (İş Yatırım yayımlıyorsa konsolide); tek seri kullanılır, solo/konsolide karışmaz"
@@ -18,8 +19,12 @@ FRAMEWORK = "TFRS, KGK finansal tablo örnekleri (XI_29 formatı)"
 CURRENCY, SCALE = "TRY", "TL (birim)"
 
 
-def build(raw: RawData) -> tuple[pd.DataFrame, pd.DataFrame, list[Period], list[str]]:
-    """Döner: (facts uzun tablo, wide: kod x dönem, mevcut dönemler, kaynakta boş/eksik dönemler)"""
+PER_SHARE = {"3ZD"}   # hisse başına tutarlar fiyat düzeyine çevrilmez
+
+
+def build(raw: RawData, basis: str = "common"):
+    """Döner: (facts uzun tablo, wide: kod x dönem (seçilen fiyat düzeyinde), dönemler, eksik dönemler, fiyat planı).
+    Fiyat planı pricebasis.plan çıktısıdır ve ayrıca "wide_source" (kaynaktaki hâliyle tablo) içerir."""
     df = raw.frame.copy()
     df["FINANCIAL_ITEM_CODE"] = df["FINANCIAL_ITEM_CODE"].astype(str)
     df = df.drop_duplicates("FINANCIAL_ITEM_CODE").set_index("FINANCIAL_ITEM_CODE")
@@ -32,8 +37,11 @@ def build(raw: RawData) -> tuple[pd.DataFrame, pd.DataFrame, list[Period], list[
     periods = sorted((parse(p) for p in has), key=lambda p: p.key)
     wide = wide[[p.label for p in periods]] if periods else wide.iloc[:, :0]
     gaps = _gaps(periods)
+    ta = wide.loc["1BL"].dropna().to_dict() if "1BL" in wide.index else {}
+    pp = pricebasis.plan(raw.ticker, periods, basis, pricebasis.applies_tms29(ta)) if periods else \
+        {"basis": basis, "factors": {}, "kinds": {}, "text": {}, "factors_bs": {}, "kinds_bs": {}, "text_bs": {}}
 
-    # türetilmiş satırlar
+    # türetilmiş satırlar (kaynak fiyat düzeyinde hesaplanır; doğrusal oldukları için sonra aynı çarpanla çevrilir)
     g = lambda c: wide.loc[c] if c in wide.index else pd.Series(np.nan, index=wide.columns)  # noqa: E731
     der = {
         "D_TOTAL_LIAB": g("2A") + g("2B"),
@@ -44,6 +52,15 @@ def build(raw: RawData) -> tuple[pd.DataFrame, pd.DataFrame, list[Period], list[
     der_df = pd.DataFrame(der).T
     der_df.loc["D_EQ_RESID"] = der_df.loc["D_EQ_RESID"].where(der_df.loc["D_EQ_RESID"].abs() > 1000, 0.0)
     full = pd.concat([wide, der_df])
+    pp["wide_source"] = full.copy()
+    if periods and basis != "source":
+        ff, fb = pd.Series(pp["factors"]), pd.Series(pp["factors_bs"])
+        stock = pd.Series({c: _is_stock(c) for c in full.index})
+        scaled = full.mul(ff, axis=1)
+        scaled.loc[stock[stock].index] = full.loc[stock[stock].index].mul(fb, axis=1)
+        keep = [c for c in PER_SHARE if c in full.index]
+        scaled.loc[keep] = full.loc[keep]
+        full = scaled
 
     # uzun fact tablosu
     rows = []
@@ -61,12 +78,21 @@ def build(raw: RawData) -> tuple[pd.DataFrame, pd.DataFrame, list[Period], list[
                          None if derived else names.get(code), stmt, p.label, p.start if flow else None, p.end,
                          p.months if flow else 0, "YTD akış" if flow else "bilanço tarihi", SCOPE, CURRENCY, SCALE,
                          SOURCE_NAME if not derived else "Hesaplanan: " + C.DERIVED[code][0], fetched, FRAMEWORK,
-                         p.price_basis, "türetilmiş" if derived else "raporlanan", float(v)))
+                         pp["text" if flow else "text_bs"].get(p.label, p.price_basis), "türetilmiş" if derived else "raporlanan", float(v)))
     facts = pd.DataFrame(rows, columns=[
         "ticker", "code", "std_key", "item", "item_source", "statement", "period", "period_start", "period_end",
         "months", "basis", "scope", "currency", "scale", "source", "fetched_at", "framework", "price_basis",
         "value_type", "value"])
-    return facts, full, periods, gaps
+    return facts, full, periods, gaps, pp
+
+
+def _is_stock(code: str) -> bool:
+    """Bilanço tarihi itibarıyla ölçülen kalem mi (akış değil)?"""
+    if code in ("D_TOTAL_LIAB", "D_EQ_RESID"):
+        return True
+    if code in ("D_EBITDA", "D_FCF"):
+        return False
+    return not C.is_flow(code)
 
 
 def _gaps(periods: list[Period]) -> list[str]:

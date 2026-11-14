@@ -38,7 +38,7 @@ def build(co, stmt: str, periods: list[Period], mode: str = "Tutar", hide_empty:
     notes = {}
     if mode.startswith("Yatay"):
         for p in periods:
-            notes[p.label] = comparability(p, p.prior_comparable(), co.issues, set(co.period_labels))
+            notes[p.label] = co.comp(p, p.prior_comparable(), stock=stmt == "BS")
     base_code = "1BL" if stmt == "BS" else "3C"
     rows = []
     for code, level, kind, label in layout:

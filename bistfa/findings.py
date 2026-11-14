@@ -111,11 +111,11 @@ def evaluate(co, P: Period) -> list[Finding]:
                          "≥ 3 puan artış", ev("roe") + ev("roe", p=prev)))
     if roe.value is not None and roep.value is not None and roep.value - roe.value >= 0.03:
         F.append(Finding("izlenecek", 3, "ROE geriledi", f"ROE {prev.label} dönemine göre {_d(100 * (roep.value - roe.value))} puan düştü.",
-                         "≥ 3 puan düşüş (bakiye bazı karşılaştırma dönemleri arasında farklı olabilir)", ev("roe") + ev("roe", p=prev)))
+                         "≥ 3 puan düşüş", ev("roe") + ev("roe", p=prev)))
     # veri
     if P.label in co.issues:
         F.append(Finding("bilgi", 2, "Kaynak veri uyarısı", co.issues[P.label],
-                         "Kaynakta baz kırılması: TL tutar karşılaştırmaları gösterilmez", []))
+                         "Bu dönemde TL tutar karşılaştırmaları gösterilmez", []))
     return F
 
 

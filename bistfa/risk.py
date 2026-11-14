@@ -54,7 +54,7 @@ def altman_z2(co, P: Period) -> Altman:
     zone = "güvenli bölge (> 2,60)" if z > 2.6 else ("gri bölge (1,10–2,60)" if z >= 1.1 else "sıkıntı bölgesi (< 1,10)")
     cav = ["Türkiye ve TMS 29 için yeniden kalibre edilmemiş özgün eşikler kullanıldı.",
            "İflas olasılığı ya da yatırım sinyali değildir."]
-    if P.tms29:
-        cav.insert(0, "TMS 29 döneminde birikmiş kârlar (X2) yeniden ifade farklarını içerir; X2 yorumu sınırlıdır.")
+    if P.tms29 and co.price.get("applies", True):
+        cav.insert(0, "Enflasyon muhasebesinde birikmiş kârlar (X2) yeniden düzenleme farklarını içerir; X2 yorumu sınırlıdır.")
     parts = {k: {"değer": X[k], "katsayı": COEF[k], "katkı": COEF[k] * X[k]} for k in X}
     return Altman(True, "", z, zone, parts, cav)

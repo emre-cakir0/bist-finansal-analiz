@@ -1,6 +1,6 @@
 # BIST Finansal Analiz uygulaması v2: denetim, kararlar ve doğrulama
 
-Son güncelleme: 2026-11-05
+Son güncelleme: 2026-11-13
 
 Bu belge, uygulamayı tam bir mali tablo analiz aracına dönüştürme isteğinin (8 sayfa, köken bilgili veri modeli, kural tabanlı yorum) nasıl ele alındığını kaydeder: mevcut kodun denetimi, tut / yeniden düzenle / yeniden yaz kararları, veri kuralları, bilinçli tanım farkları ve testler.
 
@@ -31,8 +31,8 @@ Kaynakta olmayan bilgiler açıkça belirtilir, uydurulmaz:
 
 - **Dönem uzunluğu:** akışlar YTD'dir. Yatay analiz ve karşılaştırmalar yalnız aynı uzunluktaki önceki dönemle yapılır (2025/9 ↔ 2024/9). Trend grafikleri aynı ay sonlu dönemlerle kurulur.
 - **Yıllıklandırma:** getiri, devir hızı ve gün oranlarında ara dönem akışları × 12/ay ile yıllıklandırılır ve kartta belirtilir; mevsimsellik yok sayılır.
-- **TMS 29:** 2023/12 ve sonrasında her kolon kendi dönem sonu fiyatıyla ifade edilir. Oranlar aynı kolon içinde hesaplanır. TL değişimleri "nominal" etiketiyle gösterilir; reel büyüme gösterilmez. Kaynakta baz kırılması olan dönemlerde TL değişimi hiç gösterilmez.
-- **Ortalama bakiye:** ROE, ROA, devir hızı ve gün hesaplarında (açılış + kapanış) / 2, yalnız iki bakiye de TMS 29 öncesiyse. Aksi halde dönem sonu kullanılır ve sonuçta yazılır.
+- **TMS 29 ve fiyat düzeyi:** kaynak kolonları farklı fiyat düzeylerindedir; `pricebasis` her kolonun düzeyini belirler ve TÜFE ile ortak fiyata (son yıl sonu) ya da yayımlandığı hâle çevirir. Ortak fiyat görünümünde TL değişimleri reeldir. Ayrıntı ve kanıt: bölüm 10.
+- **Ortalama bakiye:** ROE, ROA, devir hızı ve gün hesaplarında (açılış + kapanış) / 2, iki bakiye aynı fiyat düzeyindeyse (ortak fiyat görünümünde düzeltilmiş dönemler ya da ikisi de nominal). Aksi halde dönem sonu kullanılır ve sonuçta yazılır. Dönem sonu özkaynak negatifse ROE hesaplanmaz.
 - **Yanıltıcı yüzde yok:** sıfır baz, işaret değişimi ve negatif bazda yüzde değişim üretilmez; nedeni gösterilir.
 - **Sessiz sıfır yok:** hesaplanamayan her metrik "hesaplanamadı" ve nedeniyle gösterilir; grafiklerde boş noktaların nedeni listelenir.
 - **FAVÖK** kaynakta yok; net faaliyet kârı (3H) + amortisman (4CAB) olarak hesaplanır ve her yerde "hesaplanan" etiketi taşır. Hasılatın %1'inden küçükse FAVÖK bazlı oranlar hesaplanmaz.
@@ -75,20 +75,52 @@ Kaynakta olmayan bilgiler açıkça belirtilir, uydurulmaz:
 
 ## 8. Testler
 
-| Test | Komut | Sonuç (2026-11-05) |
+| Test | Komut | Sonuç |
 |---|---|---|
-| Çekirdek birim testleri | `python tests/test_core.py` | 9/9: güvenli % değişim, karşılaştırılabilirlik kodları, toplam kimlikleri, DuPont = ROE, ortalama bakiye kuralı, hesaplanamama nedenleri, baz kırılmasında TL değişimi engeli, tablolar ve özkaynak mutabakatı, Altman uygunluğu |
-| SQL ile birebirlik | `python tests/test_parity.py` | 28 metrik × 4 şirket × 28 dönem: 3.136 değer, **0 fark**. 20 değer uygulamanın bilinçli olarak hesaplamadığı durum. 5 tanım farkı (bölüm 5) SQL tanımıyla kaynak kalemlerden yeniden kurularak doğrulandı (520 değer). |
-| Arayüz duman testi | `python tests/test_app_pages.py` | 8 sayfa × 5 senaryo (BİM 2025/12 ve 2021/12, CarrefourSA negatif özkaynak, Migros 2022/12 baz kırılması, Şok 2025/9 ara dönem) + giriş sayfası: 0 hata |
-| Kaynak veri kimlikleri | uygulama içi | BİM 579 PASS, 3 EXPLAINED. CarrefourSA'da dönem sonu nakit mutabakatı (4CBL) 11 dönemde tutmuyor, Migros ve Şok'ta 1'er dönem: kaynak tutarsızlığı, FAIL olarak gösterilir. |
-| Perakende dışı şirket | ULKER | 540 test, 0 FAIL. 2022/12, 2025/9, 2025/12 baz kırılması otomatik tespit edildi. AKBNK anlaşılır mesajla reddedildi. |
-
-Tarayıcıda (localhost:8501) yönetici özeti, performans, risk, sektör, tablolar ve check-up sayfaları açılıp metinleri kontrol edildi. Görülen hatalar düzeltildi: ondalık noktalar, sıfır değişimin "olumsuz" görünmesi, hisse başına kazancın ölçeklenmesi, ROE düşüşü kuralının eksikliği.
+| Çekirdek birim testleri | `python tests/test_core.py` | 11/11 (2026-11-13): güvenli % değişim, üç fiyat görünümünde karşılaştırılabilirlik kodları, yayımlanan 10 rakamla fiyat çevirme mutabakatı, enflasyon muhasebesi uygulamayan şirket tespiti, toplam kimlikleri, DuPont = ROE, ortalama bakiye kuralı, hesaplanamama nedenleri, reel ve geçiş dönemi TL değişimi, tablolar ve özkaynak mutabakatı, Altman uygunluğu |
+| SQL ile birebirlik | `python tests/test_parity.py` | Kaynak görünümüyle çalışır. Son çalıştırma 2026-11-05: 28 metrik × 4 şirket × 28 dönem, 3.136 değer, **0 fark**. Fiyat düzeyi modülünden sonra yeniden çalıştırılmadı (bkz. bölüm 10). |
+| Arayüz duman testi | `python tests/test_app_pages.py` | 8 sayfa × 8 senaryo (2026-11-13): yıllık, ara dönem, negatif özkaynak, geçiş yılı 2022/12, TMS 29 öncesi, karma fiyatlı 2023/9, "yayımlandığı gibi" görünümü; 0 hata |
+| Kaynak veri kimlikleri | uygulama içi | BİM 581 PASS, 0 FAIL. CarrefourSA'da dönem sonu nakit mutabakatı (4CBL) 11 dönemde tutmuyor, Migros ve Şok'ta 1'er dönem: kaynak tutarsızlığı, FAIL olarak gösterilir. |
+| Diğer şirketler | ULKER, THYAO, EREGL, FROTO, ASELS, PNSUT | ULKER 539 test, 0 FAIL. THYAO ve EREGL enflasyon muhasebesi uygulamıyor olarak tanındı, nominal bırakıldı. AKBNK anlaşılır mesajla reddediliyor. |
 
 ## 9. Sınırlar
 
 - Kaynak resmî değildir; kritik rakamlar KAP'ta doğrulanmalıdır.
-- Reel büyüme için TÜFE serisi gerekir (yapılmadı).
+- 2022 öncesi dönemler bu kaynaktan ortak fiyata çevrilemez; nominal kalır.
 - Kiralama yükümlülükleri finansal borç içinde olabilir; kaynak ayırmıyor.
 - Ara dönem yıllıklandırması mevsimselliği yok sayar.
 - PDF, HTML raporun tarayıcıdan yazdırılmasıyla alınır (ek kütüphane kurulmadı).
+
+## 10. Kaynak kolonlarının fiyat düzeyi ve reel karşılaştırma (2026-11-13)
+
+**Sorun.** Uygulama 2022/12 ve 2025/12 gibi dönemlerde "kaynak veri uyarısı" gösteriyor, TL karşılaştırmalarını kapatıyordu. Neden bilinmiyordu; yalnız belirtisi (toplam varlıkta sıçrama, açıklanan rakamın 1,18 katı hasılat) kaydedilmişti.
+
+**Bulgu.** Kaynaktaki bir dönem kolonu, o dönemin ilk yayımlanan rakamı değil, o dönemi karşılaştırma olarak içeren sonraki rapordaki (enflasyona göre yeniden düzenlenmiş) rakamdır:
+
+| Kolon | Fiyat düzeyi |
+|---|---|
+| Yıllık Y/12, gelir tablosu ve bilanço | (Y+1) yılında yayımlanmış en son raporun dönem sonu |
+| Ara dönem Y/m, gelir tablosu ve nakit akışı | (Y+1)/m raporu yayımlandıysa onun dönem sonu; yoksa kendi dönem sonu |
+| Ara dönem Y/m, bilanço | Kendi dönem sonu (ara dönem raporları karşılaştırma bilançosu olarak yalnız önceki yıl sonunu verir) |
+| TMS 29 öncesi, sonradan düzenlenmemiş (yıllık ≤ 2021, ara dönem ≤ 2022/9; 2023 ara dönem bilançoları) | Nominal TL |
+
+**Kanıt.**
+- BİM 2023 raporu: 2023 hasılatı 328.441.924 bin TL, 2022 karşılaştırması 279.252.910 bin TL. Kaynakta 2022/12 = 279.252.910 (birebir), 2023/12 = 474.200 mn = 328.442 × 1,4438 (Aralık 2024 yıllık TÜFE %44,38).
+- 2024/12 kolonu / açıklanan 2024: BİM 680,1 / 519,6, Migros 384,5 / 293,8, Şok 264,6 / 202,2 = 1,309 (Aralık 2025 yıllık TÜFE %30,89).
+- 2025/12 kolonu / açıklanan 2025: BİM, Migros, Şok 1,1777 = TÜFE(Haziran 2026) / TÜFE(Aralık 2025); CarrefourSA 1,2432 = TÜFE(Eylül 2026) / TÜFE(Aralık 2025). Veri 05.11.2026'da çekildi; o tarihte CarrefourSA 9 aylık raporunu yayımlamıştı, diğer üçü yayımlamamıştı.
+- Çevirmeden sonra türetilen çeyreklik hasılatlar düzgün bir seri verir (BİM 2025: 175,7 / 171,9 / 187,5 / 186,0 milyar TL, Aralık 2025 fiyatıyla); önceki "çeyrek makullüğü" hataları kaybolur.
+
+**Çözüm.** `bistfa/pricebasis.py`:
+- TÜİK aylık TÜFE değişimlerinden endeks kurar (kaynak: TCMB tüketici fiyatları tablosu; Aralık ayları yıllık orana oturtulur).
+- Her kolonun kaynak fiyat düzeyini yukarıdaki kuralla, akış ve bilanço için ayrı ayrı belirler.
+- Üç görünüm üretir: **ortak fiyat** (varsayılan; düzeltilmiş tüm dönemler son yıl sonu fiyatıyla, büyüme reel), **yayımlandığı gibi** (her dönem kendi dönem sonu fiyatıyla) ve **kaynak** (dokunulmamış; SQL birebirlik testi için).
+- Enflasyon muhasebesi uygulamayan şirketleri (ör. işlevsel para birimi USD olanlar) tanır: 2022/12 toplam varlığı 2022/9'a göre sıçramıyorsa kolonlar nominal bırakılır (THYAO 1,03 ve EREGL 1,00; uygulayanlarda 1,9 ile 2,9 arası).
+- SQL projesinin 2025/12'de biten ham dosyaları için çekim anındaki son rapor dönemi elle kaydedilmiştir (`SNAPSHOT_LATEST`). Uygulamanın kendi çektiği veride bu, mevcut dönemlerden otomatik bulunur.
+
+**Sonuçlar ve sınırlar.**
+- Yayımlanan rakamlarla mutabakat `tests/test_core.py` içinde: 10 rakam, %0,3 tolerans.
+- 2023 ara dönemlerinde gelir tablosu düzeltilmiş, bilanço nominaldir. İkisini birleştiren oranlar (ROE, devir hızı, gün oranları, net borç / FAVÖK) bu dönemlerde hesaplanmaz ve nedeni gösterilir. Kaynak görünümünde bu tutarsızlık 2024 ve sonrasındaki ara dönemlerde de vardı (akış bir yıl sonraki fiyatla, bilanço kendi fiyatıyla); ortak fiyat görünümü bunu giderir.
+- 2022/12 ve 2023 ara dönem gelir tablolarının ilk yayımlanan (nominal) hâli kaynakta yoktur; "yayımlandığı gibi" görünümünde bu kolonlar sonraki rapordaki hâliyle kalır ve böyle etiketlenir.
+- TÜFE tablosu Ekim 2026'ya kadar doludur. Daha yeni bir fiyat düzeyi gerektiren kolon kaynak fiyatıyla bırakılır ve dönem notu düşülür; tablo elle güncellenir.
+- Çeyrek makullüğü testi artık karşılaştırmaları kapatmaz; aralık dışı çeyrekler (ör. ASELSAN'ın dördüncü çeyrek mevsimselliği) "INFO" olarak listelenir.
+- SQL birebirlik testi kaynak görünümüyle çalışır. Bu değişiklikten sonra SQL Server'a erişilemediği için yeniden çalıştırılmadı; kaynak görünümü önceki davranışı korur.
