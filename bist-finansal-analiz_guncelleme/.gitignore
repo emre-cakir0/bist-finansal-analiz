@@ -1,0 +1,8 @@
+# Statements fetched from an unofficial source (isyatirimhisse) for personal use; not committed
+app/.cache/
+data/raw/*.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
